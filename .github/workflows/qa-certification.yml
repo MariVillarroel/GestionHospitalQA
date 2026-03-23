@@ -34,18 +34,20 @@ jobs:
           TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
           if [ -z "$TICKET_ID" ]; then echo "No Ticket ID found"; exit 0; fi
 
+          # Generamos el Base64 de las credenciales
           AUTH=$(echo -n "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" | base64)
           REPORT_FILE=$(find target/surefire-reports -name "*.xml" | head -n 1)
 
           if [ -f "$REPORT_FILE" ]; then
-            echo "Subiendo reporte: $REPORT_FILE"
-            # Añadimos --http1.1 para evitar el error 43 de HTTP/2
-            curl --http1.1 -v -X POST \
+            echo "Subiendo reporte: $REPORT_FILE al ticket: $TICKET_ID"
+            
+            # Usamos el endpoint 1.0 que es el estándar para Cloud
+            curl -v -X POST \
                  -H "Authorization: Basic $AUTH" \
                  -H "Content-Type: text/xml" \
                  --data-binary @"$REPORT_FILE" \
-                 "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/2.0/import/execution/junit?testExecKey=$TICKET_ID"
+                 "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=$TICKET_ID"
           else
-            echo "❌ ERROR: No se encontró el reporte."
+            echo "❌ ERROR: No se encontró el archivo XML."
             exit 1
           fi
