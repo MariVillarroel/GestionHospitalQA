@@ -13,32 +13,78 @@ jobs:
       - name: 1. Checkout QA Repo
         uses: actions/checkout@v4
 
-      - name: 2. Clonar y Levantar Hospital
+      - name: 2. Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 3. Clonar y Levantar Hospital
         run: |
           git clone -b develop https://github.com/SkySwan0807/GestionHospital_BackEnd.git ./backend
           git clone https://github.com/frontEnd-UPB/GPI-Frontend.git ./frontend
-          cd backend && pip install -r requirements.txt
-          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          cd ../frontend && npm install
-          npm run dev &
-          sleep 30 
 
-      - name: 3. Ejecutar Tests de Java
+          # Backend Python
+          cd backend
+          pip install -r requirements.txt
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
+          cd ..
+
+          # Frontend Node
+          cd frontend
+          npm install
+          nohup npm run dev > ../frontend.log 2>&1 &
+          cd ..
+
+          # Esperar que los servicios estén listos
+          sleep 30
+          curl --retry 10 --retry-delay 3 --retry-connrefused http://localhost:8000 || true
+
+      - name: 4. Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 5. Ejecutar Tests de Java
         id: maven_test
         run: mvn test
-        continue-on-error: true 
+        continue-on-error: true
 
-      - name: 4. Actualizar Estado de Xray
+      - name: 6. Actualizar Estado de Xray
         if: always()
         run: |
+          # Extraer TICKET_ID desde el nombre del branch (ej: tests/QA-213 → QA-213)
           TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
-          AUTH=$(echo -n "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" | base64)
+
+          if [ -z "$TICKET_ID" ]; then
+            echo "⚠️  No se encontró TICKET_ID en el branch: ${{ github.ref_name }}"
+            exit 0
+          fi
+
+          # Buscar reporte XML
           REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
 
-          echo "Subiendo $REPORT_FILE a $TICKET_ID vía Multipart..."
+          if [ -z "$REPORT_FILE" ]; then
+            echo "⚠️  No se encontró archivo de reporte en target/surefire-reports"
+            exit 1
+          fi
 
-          # Cambiamos a Multipart Form Data (-F) que es más robusto frente a firewalls
-          curl -v --http1.1 \
-               -H "Authorization: Basic $AUTH" \
-               -F "file=@$REPORT_FILE" \
-               "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=$TICKET_ID"
+          echo "📤 Subiendo $REPORT_FILE a $TICKET_ID..."
+
+          # Envío como multipart/form-data (formato correcto para Xray JUnit)
+          HTTP_STATUS=$(curl -s -o /tmp/xray_response.json -w "%{http_code}" \
+            -X POST \
+            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+            -F "file=@${REPORT_FILE}" \
+            "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=${TICKET_ID}")
+
+          echo "📬 HTTP Status: $HTTP_STATUS"
+          cat /tmp/xray_response.json
+
+          # Fallar el step si Xray no aceptó el reporte
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Error al subir resultados a Xray"
+            exit 1
+          fi
+
+          echo "✅ Resultados subidos correctamente"
