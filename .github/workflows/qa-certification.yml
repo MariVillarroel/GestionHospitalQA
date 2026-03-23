@@ -99,3 +99,31 @@ jobs:
           fi
 
           echo "✅ Resultados subidos correctamente"
+
+          # 4. Mover ticket a Done si los tests pasaron
+          if [ "${{ steps.maven_test.outcome }}" == "success" ]; then
+            echo "🔄 Moviendo $TICKET_ID a Done..."
+
+            # Obtener el ID de la transición "Done"
+            TRANSITIONS=$(curl -s \
+              --http1.1 \
+              -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+              "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/issue/${TICKET_ID}/transitions")
+
+            echo "Transiciones disponibles: $TRANSITIONS"
+
+            TRANSITION_ID=$(echo $TRANSITIONS | grep -o '"id":"[^"]*","name":"Done"' | grep -o '"id":"[^"]*"' | grep -o '[0-9]*')
+
+            if [ -z "$TRANSITION_ID" ]; then
+              echo "⚠️ No se encontró transición Done"
+            else
+              curl -s -X POST \
+                --http1.1 \
+                -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+                -H "Content-Type: application/json" \
+                -d "{\"transition\": {\"id\": \"$TRANSITION_ID\"}}" \
+                "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/issue/${TICKET_ID}/transitions"
+
+              echo "✅ Ticket movido a Done"
+            fi
+          fi
