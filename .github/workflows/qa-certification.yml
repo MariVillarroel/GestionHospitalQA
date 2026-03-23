@@ -1,0 +1,60 @@
+name: QA Dynamic Java Runner (Xray Status Update)
+
+on:
+  push:
+    branches: [ "tests/**", "main" ]
+  workflow_dispatch:
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout QA Repo
+        uses: actions/checkout@v4
+
+      - name: 2. Clonar y Levantar Hospital
+        run: |
+          git clone -b develop https://github.com/SkySwan0807/GestionHospital_BackEnd.git ./backend
+          git clone https://github.com/frontEnd-UPB/GPI-Frontend.git ./frontend
+          cd backend && pip install -r requirements.txt
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          cd ../frontend && npm install
+          npm run dev &
+          sleep 30 
+
+      - name: 3. Ejecutar Tests de Java
+        id: maven_test
+        run: mvn test
+        continue-on-error: true # Importante para que el reporte se suba aunque falle el test
+
+      - name: 4. Actualizar Estado de Xray (Overall Execution Status)
+        if: always()
+        run: |
+          # 1. Extraer el ID del Test Execution (ej: QA-197 de tu imagen)
+          TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+')
+          
+          if [ -z "$TICKET_ID" ]; then
+            echo "No se encontró ID de ticket en la rama. Saltando actualización de Xray."
+            exit 0
+          fi
+
+          # 2. Autenticación (Usando tu Jira User y Token como Basic Auth)
+          AUTH=$(echo -n "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" | base64)
+          
+          # 3. Localizar el reporte generado por Maven
+          # Buscamos el XML que generó JUnit en la carpeta target
+          REPORT_FILE=$(ls target/surefire-reports/*.xml | head -n 1)
+
+          if [ -f "$REPORT_FILE" ]; then
+            echo "Subiendo reporte $REPORT_FILE al ticket $TICKET_ID..."
+            
+            # 4. Importar resultados a Xray
+            # Este endpoint actualiza el "Overall Execution Status" automáticamente
+            curl -H "Authorization: Basic $AUTH" \
+                 -H "Content-Type: text/xml" \
+                 --data-binary @"$REPORT_FILE" \
+                 "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/2.0/import/execution/junit?testExecKey=$TICKET_ID"
+          else
+            echo "Error: No se encontró el archivo de reporte de Maven."
+          fi
