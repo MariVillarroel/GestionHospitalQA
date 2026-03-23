@@ -79,7 +79,8 @@ jobs:
           HTTP_STATUS=$(curl -s -o /tmp/xray_response.json -w "%{http_code}" \
             -X POST \
             -H "Authorization: Bearer $TOKEN" \
-            -F "file=@${REPORT_FILE}" \
+            -H "Content-Type: multipart/form-data" \
+            -F "file=@${REPORT_FILE};type=text/xml" \
             -F "testExecKey=${TICKET_ID}" \
             -F "projectKey=QA" \
             "https://xray.cloud.getxray.app/api/v2/import/execution/junit")
