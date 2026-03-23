@@ -13,39 +13,89 @@ jobs:
       - name: 1. Checkout QA Repo
         uses: actions/checkout@v4
 
-      - name: 2. Clonar y Levantar Hospital
+      - name: 2. Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 3. Clonar y Levantar Hospital
         run: |
           git clone -b develop https://github.com/SkySwan0807/GestionHospital_BackEnd.git ./backend
           git clone https://github.com/frontEnd-UPB/GPI-Frontend.git ./frontend
-          cd backend && pip install -r requirements.txt
-          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-          cd ../frontend && npm install
-          npm run dev &
-          sleep 30 
 
-      - name: 3. Ejecutar Tests de Java
+          # Backend Python
+          cd backend
+          pip install -r requirements.txt
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
+          cd ..
+
+          # Frontend Node
+          cd frontend
+          npm install
+          nohup npm run dev > ../frontend.log 2>&1 &
+          cd ..
+
+          # Esperar que los servicios estén listos
+          sleep 30
+          curl --retry 10 --retry-delay 3 --retry-connrefused http://localhost:8000 || true
+
+      - name: 4. Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 5. Ejecutar Tests de Java
         id: maven_test
         run: mvn test
-        continue-on-error: true # Importante para que el reporte se suba aunque falle el test
+        continue-on-error: true
 
-      - name: 4. Actualizar Estado de Xray (Overall Execution Status)
+      - name: 6. Actualizar Estado de Xray
         if: always()
         run: |
           TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
-          if [ -z "$TICKET_ID" ]; then exit 0; fi
 
-          AUTH=$(echo -n "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" | base64)
-          
-          # Buscamos cualquier XML que contenga los resultados de los tests
-          REPORT_FILE=$(find target/surefire-reports -name "*.xml" | head -n 1)
+          if [ -z "$TICKET_ID" ]; then
+            echo "⚠️ No se encontró TICKET_ID en el branch"
+            exit 0
+          fi
 
-          if [ -f "$REPORT_FILE" ]; then
-            echo "Subiendo reporte: $REPORT_FILE"
-            curl -H "Authorization: Basic $AUTH" \
-                 -H "Content-Type: text/xml" \
-                 --data-binary @"$REPORT_FILE" \
-                 "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/2.0/import/execution/junit?testExecKey=$TICKET_ID"
-          else
-            echo "❌ ERROR: No se generó el reporte XML en target/surefire-reports/"
+          REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
+
+          if [ -z "$REPORT_FILE" ]; then
+            echo "⚠️ No se encontró reporte XML"
             exit 1
           fi
+
+          # 1. Obtener token OAuth de Xray Cloud
+          TOKEN=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"client_id":"${{ secrets.XRAY_CLIENT_ID }}","client_secret":"${{ secrets.XRAY_CLIENT_SECRET }}"}' \
+            "https://xray.cloud.getxray.app/api/v2/authenticate" | tr -d '"')
+
+          echo "Token obtenido: ${TOKEN:0:10}..."
+
+          # 2. Limpiar XML eliminando el bloque <properties> innecesario
+          sed '/<properties>/,/<\/properties>/d' $REPORT_FILE > /tmp/clean-report.xml
+
+          echo "=== XML limpio ==="
+          cat /tmp/clean-report.xml
+
+          # 3. Enviar a Xray
+          HTTP_STATUS=$(curl -s -o /tmp/xray_response.json -w "%{http_code}" \
+            --http1.1 \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: text/xml" \
+            --data-binary @/tmp/clean-report.xml \
+            "https://xray.cloud.getxray.app/api/v2/import/execution/junit?projectKey=QA&testExecKey=${TICKET_ID}")
+
+          echo "📬 HTTP Status: $HTTP_STATUS"
+          cat /tmp/xray_response.json
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Error al subir resultados a Xray"
+            exit 1
+          fi
+
+          echo "✅ Resultados subidos correctamente"
