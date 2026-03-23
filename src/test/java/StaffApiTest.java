@@ -36,7 +36,7 @@ public class StaffApiTest {
             """;
         
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL))
+                .uri(URI.create(BASE_URL + "/"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
                 .build();
@@ -64,7 +64,7 @@ public class StaffApiTest {
 
     @Test
     @Order(3)
-    public void testPutStaff() throws Exception {
+    public void testPatchStaff() throws Exception {
         String jsonPayload = """
             {
               "first_name": "TestQA_Updated",
@@ -79,7 +79,7 @@ public class StaffApiTest {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + "/3"))
                 .header("Content-Type", "application/json")
-                .PUT(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(jsonPayload))
                 .build();
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
