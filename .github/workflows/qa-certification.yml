@@ -47,6 +47,11 @@ jobs:
 
       - name: 5. Ejecutar Tests de Java
         id: maven_test
+        env:
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: mvn test
         continue-on-error: true
 
