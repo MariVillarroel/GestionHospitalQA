@@ -50,7 +50,7 @@ jobs:
         run: mvn test
         continue-on-error: true
       
-      - name: DEBUG - Forzar HTTP/1.1
+      - name: DEBUG - Forzar HTTP/1.1 con nuevo token
         if: always()
         run: |
           REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
