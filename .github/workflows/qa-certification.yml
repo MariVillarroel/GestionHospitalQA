@@ -49,14 +49,15 @@ jobs:
         id: maven_test
         run: mvn test
         continue-on-error: true
-
-      - name: DEBUG - Probar con password en lugar de token
+      
+      - name: DEBUG - Forzar HTTP/1.1
         if: always()
         run: |
           REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
 
           curl -s -w "\nHTTP: %{http_code}\n" \
-            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_PASSWORD }}" \
+            --http1.1 \
+            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
             -F "file=@${REPORT_FILE}" \
             "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=QA-216"
 
