@@ -31,21 +31,20 @@ jobs:
       - name: 4. Actualizar Estado de Xray
         if: always()
         run: |
-          # Extraemos el ID (QA-213)
+          # Extraer el ID de la rama (ej. QA-213)
           TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
           
+          # Autenticación
           AUTH=$(echo -n "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" | base64)
+          
+          # Encontrar el archivo de reporte
           REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
 
           echo "Subiendo reporte $REPORT_FILE al Test Execution $TICKET_ID..."
 
-          # Comando optimizado:
-          # 1. Usamos --data-binary para no corromper el XML
-          # 2. Quitamos espacios innecesarios en la URL
-          # 3. Forzamos el Accept header
-          curl -v --http1.1 \
+          # USAR ESTE COMANDO ESPECÍFICO:
+          curl -v \
                -H "Authorization: Basic $AUTH" \
                -H "Content-Type: application/xml" \
-               -H "Accept: application/json" \
                --data-binary @"$REPORT_FILE" \
                "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=$TICKET_ID"
