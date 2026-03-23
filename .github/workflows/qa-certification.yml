@@ -50,44 +50,49 @@ jobs:
         run: mvn test
         continue-on-error: true
 
-      - name: DEBUG - Verificar conexión Jira
-        run: |
-          curl -s \
-            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
-            "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/search?jql=project=QA+AND+issuetype='Test Execution'&fields=summary,status&maxResults=10"
-            
       - name: 6. Actualizar Estado de Xray
         if: always()
         run: |
-          # Extraer TICKET_ID desde el nombre del branch (ej: tests/QA-213 → QA-213)
           TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
 
           if [ -z "$TICKET_ID" ]; then
-            echo "No se encontró TICKET_ID en el branch: ${{ github.ref_name }}"
+            echo "⚠️ No se encontró TICKET_ID en el branch"
             exit 0
           fi
 
-          # Buscar reporte XML
           REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
 
           if [ -z "$REPORT_FILE" ]; then
-            echo "⚠️  No se encontró archivo de reporte en target/surefire-reports"
+            echo "⚠️ No se encontró reporte XML"
             exit 1
           fi
 
-          echo "📤 Subiendo $REPORT_FILE a $TICKET_ID..."
+          # 1. Obtener token OAuth de Xray Cloud
+          TOKEN=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"client_id":"${{ secrets.XRAY_CLIENT_ID }}","client_secret":"${{ secrets.XRAY_CLIENT_SECRET }}"}' \
+            "https://xray.cloud.getxray.app/api/v2/authenticate" | tr -d '"')
 
-          # Envío como multipart/form-data (formato correcto para Xray JUnit)
+          echo "Token obtenido: ${TOKEN:0:10}..."
+
+          # 2. Limpiar XML eliminando el bloque <properties> innecesario
+          sed '/<properties>/,/<\/properties>/d' $REPORT_FILE > /tmp/clean-report.xml
+
+          echo "=== XML limpio ==="
+          cat /tmp/clean-report.xml
+
+          # 3. Enviar a Xray
           HTTP_STATUS=$(curl -s -o /tmp/xray_response.json -w "%{http_code}" \
+            --http1.1 \
             -X POST \
-            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
-            -F "file=@${REPORT_FILE}" \
-            "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=${TICKET_ID}")
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: text/xml" \
+            --data-binary @/tmp/clean-report.xml \
+            "https://xray.cloud.getxray.app/api/v2/import/execution/junit?projectKey=QA&testExecKey=${TICKET_ID}")
 
           echo "📬 HTTP Status: $HTTP_STATUS"
           cat /tmp/xray_response.json
 
-          # Fallar el step si Xray no aceptó el reporte
           if [ "$HTTP_STATUS" != "200" ]; then
             echo "❌ Error al subir resultados a Xray"
             exit 1

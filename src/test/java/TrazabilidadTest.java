@@ -8,7 +8,7 @@ public class TrazabilidadTest {
 
     @Test
     public void pruebaConexionJira() {
-        // Configuración para que corra en el servidor de GitHub (Headless)
+        // Configuración para que corra en el servidor (Headless)
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--headless");
         options.addArguments("--no-sandbox");
