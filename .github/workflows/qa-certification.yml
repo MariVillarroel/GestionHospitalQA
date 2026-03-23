@@ -41,10 +41,12 @@ jobs:
 
           if [ -f "$REPORT_FILE" ]; then
             echo "Subiendo reporte: $REPORT_FILE"
-            curl -H "Authorization: Basic $AUTH" \
-                 -H "Content-Type: text/xml" \
-                 --data-binary @"$REPORT_FILE" \
-                 "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/2.0/import/execution/junit?testExecKey=$TICKET_ID"
+            # Usamos -vvv para ver exactamente qué responde Jira si falla
+            curl -v -X POST \
+               -H "Authorization: Basic $AUTH" \
+               -H "Content-Type: text/xml" \
+               --data-binary @"$REPORT_FILE" \
+               "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/2.0/import/execution/junit?testExecKey=$TICKET_ID"
           else
             echo "❌ ERROR: No se generó el reporte XML en target/surefire-reports/"
             exit 1
