@@ -31,23 +31,25 @@ jobs:
       - name: 4. Actualizar Estado de Xray
         if: always()
         run: |
+          # 1. Extraer ID del ticket de la rama
           TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
-          if [ -z "$TICKET_ID" ]; then echo "No Ticket ID found"; exit 0; fi
+          if [ -z "$TICKET_ID" ]; then echo "No se encontró ID de ticket en la rama"; exit 0; fi
 
-          # Generamos el Base64 de las credenciales
+          # 2. Preparar credenciales y archivo
           AUTH=$(echo -n "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" | base64)
-          REPORT_FILE=$(find target/surefire-reports -name "*.xml" | head -n 1)
+          REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
 
           if [ -f "$REPORT_FILE" ]; then
-            echo "Subiendo reporte: $REPORT_FILE al ticket: $TICKET_ID"
+            echo "Enviando reporte $REPORT_FILE al ticket $TICKET_ID..."
             
-            # Usamos el endpoint 1.0 que es el estándar para Cloud
-            curl --http1.1 -v -X POST \
+            # 3. Envío optimizado para evitar el error 400
+            curl -v --http1.1 \
+                 -X POST \
                  -H "Authorization: Basic $AUTH" \
-                 -H "Content-Type: text/xml" \
+                 -H "Content-Type: application/xml" \
                  --data-binary @"$REPORT_FILE" \
                  "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=$TICKET_ID"
           else
-            echo "❌ ERROR: No se encontró el archivo XML."
+            echo "❌ ERROR: No se encontró el reporte XML."
             exit 1
           fi
