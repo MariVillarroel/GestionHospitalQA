@@ -54,7 +54,7 @@ jobs:
         run: |
           curl -s \
             -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
-            "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/myself"
+            "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/project/QA"
             
       - name: 6. Actualizar Estado de Xray
         if: always()
