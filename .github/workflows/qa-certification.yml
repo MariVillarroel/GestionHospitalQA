@@ -1,0 +1,39 @@
+name: QA Dynamic Java Runner
+
+on:
+  push:
+    branches: [ "tests/**", "main" ]
+  workflow_dispatch:
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout QA Repo
+        uses: actions/checkout@v4
+
+      - name: 2. Clonar Backend y Frontend
+        run: |
+          git clone -b develop https://github.com/SkySwan0807/GestionHospital_BackEnd.git ./backend
+          git clone https://github.com/frontEnd-UPB/GPI-Frontend.git ./frontend
+
+      - name: 3. Setup Java 24 (Match con tu pom.xml)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '24'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: 4. Levantar Servicios
+        run: |
+          # Backend (FastAPI)
+          cd backend && pip install -r requirements.txt
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          # Frontend (Vite)
+          cd ../frontend && npm install
+          npm run dev &
+          sleep 30 
+
+      - name: 5. Ejecutar Tests de Java con Maven
+        run: mvn test
