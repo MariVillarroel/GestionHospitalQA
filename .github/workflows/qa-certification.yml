@@ -42,7 +42,7 @@ jobs:
             echo "Subiendo reporte: $REPORT_FILE al ticket: $TICKET_ID"
             
             # Usamos el endpoint 1.0 que es el estándar para Cloud
-            curl -v -X POST \
+            curl --http1.1 -v -X POST \
                  -H "Authorization: Basic $AUTH" \
                  -H "Content-Type: text/xml" \
                  --data-binary @"$REPORT_FILE" \
