@@ -2,10 +2,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.Order;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
+import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -98,32 +102,34 @@ public class StaffApiTest {
     /**
      * PATCH /api/v1/staff/{id}/admin
      * Verifica que la actualización parcial de campos de un empleado funciona correctamente.
+     * Nota: Se usa HttpURLConnection en lugar de HttpClient porque el HttpClient de Java 17
+     * tiene restricciones JVM sobre el método PATCH. HttpURLConnection no tiene esta limitación.
      */
     @Test
     @Order(3)
     public void testPatchStaff_UpdateFields() throws Exception {
-        String jsonPayload = """
-            {
-              "phone_number": "99999999",
-              "status": "Active",
-              "role_level": "Senior"
-            }
-            """;
+        String jsonPayload = "{\"phone_number\": \"99999999\", \"status\": \"Active\", \"role_level\": \"Senior\"}";
+        byte[] body = jsonPayload.getBytes(StandardCharsets.UTF_8);
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/" + KNOWN_STAFF_ID + "/admin"))
-                .header("Content-Type", "application/json")
-                .method("PATCH", HttpRequest.BodyPublishers.ofString(jsonPayload))
-                .build();
+        URL url = URI.create(BASE_URL + "/" + KNOWN_STAFF_ID + "/admin").toURL();
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("PATCH");
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setRequestProperty("Content-Length", String.valueOf(body.length));
+        conn.setDoOutput(true);
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        int code = response.statusCode();
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(body);
+        }
+
+        int code = conn.getResponseCode();
 
         assertTrue(code == 200,
-            "PATCH sobre un staff existente debería devolver 200, pero devolvió: " + code + " | Body: " + response.body());
+            "PATCH sobre un staff existente debería devolver 200, pero devolvió: " + code);
 
-        // Verificar que la respuesta contiene los campos actualizados
-        String body = response.body();
-        assertTrue(body.contains("Senior"), "La respuesta debería reflejar el role_level actualizado a 'Senior'");
+        // Leer la respuesta y verificar que se refleja el cambio
+        String responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertTrue(responseBody.contains("Senior"),
+            "La respuesta debería reflejar el role_level actualizado a 'Senior'. Body: " + responseBody);
     }
 }
