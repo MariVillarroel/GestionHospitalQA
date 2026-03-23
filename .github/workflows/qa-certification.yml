@@ -75,30 +75,28 @@ jobs:
 
           echo "Token obtenido: ${TOKEN:0:10}..."
 
-          # 2. Debug - ver archivo
-          echo "=== Contenido del reporte ==="
-          echo "Archivo: $REPORT_FILE"
-          ls -la $REPORT_FILE
-          head -5 $REPORT_FILE
+          # 2. Limpiar XML eliminando el bloque <properties> innecesario
+          sed '/<properties>/,/<\/properties>/d' $REPORT_FILE > /tmp/clean-report.xml
 
-          # 3. Probar con campo "file"
-          echo "=== Probando con field: file ==="
-          curl -s -o /tmp/xray_response.json -w "\nHTTP: %{http_code}\n" \
+          echo "=== XML limpio ==="
+          cat /tmp/clean-report.xml
+
+          # 3. Enviar a Xray
+          HTTP_STATUS=$(curl -s -o /tmp/xray_response.json -w "%{http_code}" \
+            --http1.1 \
             -X POST \
             -H "Authorization: Bearer $TOKEN" \
-            -F "file=@${REPORT_FILE};type=text/xml" \
+            -F "file=@/tmp/clean-report.xml;type=text/xml" \
             -F "testExecKey=${TICKET_ID}" \
             -F "projectKey=QA" \
-            "https://xray.cloud.getxray.app/api/v2/import/execution/junit"
+            "https://xray.cloud.getxray.app/api/v2/import/execution/junit")
+
+          echo "📬 HTTP Status: $HTTP_STATUS"
           cat /tmp/xray_response.json
 
-          # 4. Probar con campo "results"
-          echo "=== Probando con field: results ==="
-          curl -s -o /tmp/xray_response2.json -w "\nHTTP: %{http_code}\n" \
-            -X POST \
-            -H "Authorization: Bearer $TOKEN" \
-            -F "results=@${REPORT_FILE};type=text/xml" \
-            -F "testExecKey=${TICKET_ID}" \
-            -F "projectKey=QA" \
-            "https://xray.cloud.getxray.app/api/v2/import/execution/junit"
-          cat /tmp/xray_response2.json
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Error al subir resultados a Xray"
+            exit 1
+          fi
+
+          echo "✅ Resultados subidos correctamente"
