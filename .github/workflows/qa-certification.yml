@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 3. Clonar y Levantar Hospital
+      - name: 3. Clonar y Levantar Hospital wow
         run: |
           git clone -b develop https://github.com/SkySwan0807/GestionHospital_BackEnd.git ./backend
           git clone https://github.com/frontEnd-UPB/GPI-Frontend.git ./frontend
@@ -99,3 +99,17 @@ jobs:
           fi
 
           echo "✅ Resultados subidos correctamente"
+
+          # 4. Mover ticket a Done si los tests pasaron
+          if [ "${{ steps.maven_test.outcome }}" == "success" ]; then
+            echo "🔄 Moviendo $TICKET_ID a Done..."
+
+            curl -s -X POST \
+              --http1.1 \
+              -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"transition": {"id": "9"}}' \
+              "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/issue/${TICKET_ID}/transitions"
+
+            echo "✅ Ticket movido a Done"
+          fi
