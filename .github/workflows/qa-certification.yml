@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: 3. Clonar y Levantar Hospital
+      - name: 3. Clonar y Levantar Hospital wow
         run: |
           git clone -b develop https://github.com/SkySwan0807/GestionHospital_BackEnd.git ./backend
           git clone https://github.com/frontEnd-UPB/GPI-Frontend.git ./frontend
