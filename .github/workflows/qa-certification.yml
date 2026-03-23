@@ -26,7 +26,7 @@ jobs:
       - name: 3. Ejecutar Tests de Java
         id: maven_test
         run: mvn test
-        continue-on-error: true # Importante para que el reporte se suba aunque falle el test
+        continue-on-error: true 
 
       - name: 4. Actualizar Estado de Xray
         if: always()
