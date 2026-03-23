@@ -50,20 +50,13 @@ jobs:
         run: mvn test
         continue-on-error: true
 
-      - name: Probar import Xray directo
+      - name: DEBUG - Verificar tipo de ticket QA-216
         if: always()
         run: |
-          REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
-          echo "Archivo: $REPORT_FILE"
-          echo "Contenido:"
-          cat $REPORT_FILE
-
           echo "--- Respuesta de Xray ---"
-          curl -v \
-            -X POST \
+          curl -s \
             -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
-            -F "file=@${REPORT_FILE}" \
-            "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=QA-216"
+            "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/issue/QA-216?fields=issuetype,summary"
 
       - name: 6. Actualizar Estado de Xray/Jira
         if: always()
