@@ -50,12 +50,21 @@ jobs:
         run: mvn test
         continue-on-error: true
 
-      - name: DEBUG - Verificar conexión Jira
+      - name: Probar import Xray directo
+        if: always()
         run: |
-          curl -s \
+          REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
+          echo "Archivo: $REPORT_FILE"
+          echo "Contenido:"
+          cat $REPORT_FILE
+
+          echo "--- Respuesta de Xray ---"
+          curl -v \
+            -X POST \
             -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
-            "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/search?jql=project=QA+AND+issuetype='Test Execution'&fields=summary,status&maxResults=10"
-            
+            -F "file=@${REPORT_FILE}" \
+            "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=QA-216"
+
       - name: 6. Actualizar Estado de Xray/Jira
         if: always()
         run: |
