@@ -1,0 +1,120 @@
+name: QA Dynamic Java Runner (Xray Status Update)
+
+on:
+  push:
+    branches: [ "tests/**", "main" ]
+  workflow_dispatch:
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout QA Repo
+        uses: actions/checkout@v4
+
+      - name: 2. Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 3. Clonar y Levantar Hospital wow
+        run: |
+          git clone -b develop https://github.com/SkySwan0807/GestionHospital_BackEnd.git ./backend
+          git clone https://github.com/frontEnd-UPB/GPI-Frontend.git ./frontend
+
+          # Backend Python
+          cd backend
+          pip install -r requirements.txt
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8000 > ../backend.log 2>&1 &
+          cd ..
+
+          # Frontend Node
+          cd frontend
+          npm install
+          nohup npm run dev > ../frontend.log 2>&1 &
+          cd ..
+
+          # Esperar que los servicios estén listos
+          sleep 30
+          curl --retry 10 --retry-delay 3 --retry-connrefused http://localhost:8000 || true
+
+      - name: 4. Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: 5. Ejecutar Tests de Java
+        id: maven_test
+        env:
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: mvn test
+        continue-on-error: true
+
+      - name: 6. Actualizar Estado de Xray
+        if: always()
+        run: |
+          TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
+
+          if [ -z "$TICKET_ID" ]; then
+            echo "⚠️ No se encontró TICKET_ID en el branch"
+            exit 0
+          fi
+
+          REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
+
+          if [ -z "$REPORT_FILE" ]; then
+            echo "⚠️ No se encontró reporte XML"
+            exit 1
+          fi
+
+          # 1. Obtener token OAuth de Xray Cloud
+          TOKEN=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"client_id":"${{ secrets.XRAY_CLIENT_ID }}","client_secret":"${{ secrets.XRAY_CLIENT_SECRET }}"}' \
+            "https://xray.cloud.getxray.app/api/v2/authenticate" | tr -d '"')
+
+          echo "Token obtenido: ${TOKEN:0:10}..."
+
+          # 2. Limpiar XML eliminando el bloque <properties> innecesario
+          sed '/<properties>/,/<\/properties>/d' $REPORT_FILE > /tmp/clean-report.xml
+
+          echo "=== XML limpio ==="
+          cat /tmp/clean-report.xml
+
+          # 3. Enviar a Xray
+          HTTP_STATUS=$(curl -s -o /tmp/xray_response.json -w "%{http_code}" \
+            --http1.1 \
+            -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: text/xml" \
+            --data-binary @/tmp/clean-report.xml \
+            "https://xray.cloud.getxray.app/api/v2/import/execution/junit?projectKey=QA&testExecKey=${TICKET_ID}")
+
+          echo "📬 HTTP Status: $HTTP_STATUS"
+          cat /tmp/xray_response.json
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Error al subir resultados a Xray"
+            exit 1
+          fi
+
+          echo "✅ Resultados subidos correctamente"
+
+          # 4. Mover ticket a Done si los tests pasaron
+          if [ "${{ steps.maven_test.outcome }}" == "success" ]; then
+            echo "🔄 Moviendo $TICKET_ID a Done..."
+
+            curl -s -X POST \
+              --http1.1 \
+              -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"transition": {"id": "9"}}' \
+              "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/issue/${TICKET_ID}/transitions"
+
+            echo "✅ Ticket movido a Done"
+          fi
