@@ -50,16 +50,28 @@ jobs:
         run: mvn test
         continue-on-error: true
 
-      - name: DEBUG -  Import sin testExecKey
+      - name: DEBUG - Probar API v2 de Xray
         if: always()
         run: |
           REPORT_FILE=$(find target/surefire-reports -name "TEST-*.xml" | head -n 1)
 
-          curl -s \
+          echo "=== Probando v1 ==="
+          curl -s -w "\nHTTP: %{http_code}\n" \
             -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
             -F "file=@${REPORT_FILE}" \
-            "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit"
+            "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/import/execution/junit?testExecKey=QA-216"
 
+          echo "=== Probando v2 ==="
+          curl -s -w "\nHTTP: %{http_code}\n" \
+            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+            -F "file=@${REPORT_FILE}" \
+            "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/2.0/import/execution/junit?testExecKey=QA-216"
+
+          echo "=== Verificando que Xray existe ==="
+          curl -s -w "\nHTTP: %{http_code}\n" \
+            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+            "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/1.0/api/xray/export/test"
+            
       - name: 6. Actualizar Estado de Xray/Jira
         if: always()
         run: |
