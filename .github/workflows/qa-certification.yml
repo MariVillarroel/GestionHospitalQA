@@ -50,6 +50,14 @@ jobs:
         run: mvn test
         continue-on-error: true
 
+      - name: DEBUG - Verificar conexión Jira
+        run: |
+          curl -s -o /tmp/test.json -w "HTTP: %{http_code}\n" \
+          -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+          "https://${{ secrets.JIRA_DOMAIN }}/rest/api/2/issue/QA-213"
+    
+          cat /tmp/test.json     
+
       - name: 6. Actualizar Estado de Xray
         if: always()
         run: |
