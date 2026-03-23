@@ -31,30 +31,21 @@ jobs:
       - name: 4. Actualizar Estado de Xray (Overall Execution Status)
         if: always()
         run: |
-          # 1. Extraer el ID del Test Execution (ej: QA-197 de tu imagen)
-          TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+')
-          
-          if [ -z "$TICKET_ID" ]; then
-            echo "No se encontró ID de ticket en la rama. Saltando actualización de Xray."
-            exit 0
-          fi
+          TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
+          if [ -z "$TICKET_ID" ]; then exit 0; fi
 
-          # 2. Autenticación (Usando tu Jira User y Token como Basic Auth)
           AUTH=$(echo -n "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" | base64)
           
-          # 3. Localizar el reporte generado por Maven
-          # Buscamos el XML que generó JUnit en la carpeta target
-          REPORT_FILE=$(ls target/surefire-reports/*.xml | head -n 1)
+          # Buscamos cualquier XML que contenga los resultados de los tests
+          REPORT_FILE=$(find target/surefire-reports -name "*.xml" | head -n 1)
 
           if [ -f "$REPORT_FILE" ]; then
-            echo "Subiendo reporte $REPORT_FILE al ticket $TICKET_ID..."
-            
-            # 4. Importar resultados a Xray
-            # Este endpoint actualiza el "Overall Execution Status" automáticamente
+            echo "Subiendo reporte: $REPORT_FILE"
             curl -H "Authorization: Basic $AUTH" \
                  -H "Content-Type: text/xml" \
                  --data-binary @"$REPORT_FILE" \
                  "https://${{ secrets.JIRA_DOMAIN }}/rest/raven/2.0/import/execution/junit?testExecKey=$TICKET_ID"
           else
-            echo "Error: No se encontró el archivo de reporte de Maven."
+            echo "❌ ERROR: No se generó el reporte XML en target/surefire-reports/"
+            exit 1
           fi
