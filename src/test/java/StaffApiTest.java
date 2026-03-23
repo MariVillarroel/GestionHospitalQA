@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class StaffApiTest {
 
-    private static final String BASE_URL = "http://localhost:8000/api/staff";
+    private static final String BASE_URL = "http://localhost:8000/api/v1/staff";
     private static final HttpClient client = HttpClient.newHttpClient();
 
     @Test
@@ -52,7 +52,7 @@ public class StaffApiTest {
     @Order(2)
     public void testGetStaff() throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/3")) // using the ID expected from DB or creation
+                .uri(URI.create(BASE_URL + "/3?requester_role=admin")) // requires admin role
                 .GET()
                 .build();
 
@@ -77,7 +77,7 @@ public class StaffApiTest {
             """;
         
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/3"))
+                .uri(URI.create(BASE_URL + "/3/admin"))
                 .header("Content-Type", "application/json")
                 .method("PATCH", HttpRequest.BodyPublishers.ofString(jsonPayload))
                 .build();
