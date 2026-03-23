@@ -42,8 +42,10 @@ jobs:
 
           echo "Subiendo reporte $REPORT_FILE al Test Execution $TICKET_ID..."
 
+          head -n 2 "$REPORT_FILE"
+
           # USAR ESTE COMANDO ESPECÍFICO:
-          curl -v \
+          curl -v ''http1.1 \
                -H "Authorization: Basic $AUTH" \
                -H "Content-Type: application/xml" \
                --data-binary @"$REPORT_FILE" \
