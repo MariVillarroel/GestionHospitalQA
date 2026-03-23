@@ -63,7 +63,7 @@ jobs:
           TICKET_ID=$(echo "${{ github.ref_name }}" | grep -oE '[A-Z]+-[0-9]+' || true)
 
           if [ -z "$TICKET_ID" ]; then
-            echo "⚠️  No se encontró TICKET_ID en el branch: ${{ github.ref_name }}"
+            echo "No se encontró TICKET_ID en el branch: ${{ github.ref_name }}"
             exit 0
           fi
 
