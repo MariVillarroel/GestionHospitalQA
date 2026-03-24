@@ -102,34 +102,57 @@ public class StaffApiTest {
     /**
      * PATCH /api/v1/staff/{id}/admin
      * Verifica que la actualización parcial de campos de un empleado funciona correctamente.
-     * Nota: Se usa HttpURLConnection en lugar de HttpClient porque el HttpClient de Java 17
-     * tiene restricciones JVM sobre el método PATCH. HttpURLConnection no tiene esta limitación.
+     *
+     * Nota técnica: Java bloquea PATCH tanto en HttpClient como en HttpURLConnection a nivel
+     * de JVM. Se aplica el workaround estándar via reflexión para escribir el campo 'method'
+     * directamente en la clase interna, sin necesidad de dependencias externas.
      */
     @Test
     @Order(3)
     public void testPatchStaff_UpdateFields() throws Exception {
         String jsonPayload = "{\"phone_number\": \"99999999\", \"status\": \"Active\", \"role_level\": \"Senior\"}";
-        byte[] body = jsonPayload.getBytes(StandardCharsets.UTF_8);
+        byte[] bodyBytes = jsonPayload.getBytes(StandardCharsets.UTF_8);
 
         URL url = URI.create(BASE_URL + "/" + KNOWN_STAFF_ID + "/admin").toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setRequestMethod("PATCH");
+
+        // Workaround: reflexión para forzar PATCH (bloqueado por la JVM por defecto)
+        forcePatchMethod(conn);
+
         conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("Content-Length", String.valueOf(body.length));
+        conn.setRequestProperty("Content-Length", String.valueOf(bodyBytes.length));
         conn.setDoOutput(true);
 
         try (OutputStream os = conn.getOutputStream()) {
-            os.write(body);
+            os.write(bodyBytes);
         }
 
         int code = conn.getResponseCode();
-
         assertTrue(code == 200,
             "PATCH sobre un staff existente debería devolver 200, pero devolvió: " + code);
 
-        // Leer la respuesta y verificar que se refleja el cambio
         String responseBody = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertTrue(responseBody.contains("Senior"),
             "La respuesta debería reflejar el role_level actualizado a 'Senior'. Body: " + responseBody);
+    }
+
+    /**
+     * Workaround para "Invalid HTTP method: PATCH".
+     * Usa reflexión para escribir el campo 'method' directamente, evitando
+     * la validación interna de la JVM que solo permite GET, POST, PUT, etc.
+     */
+    private static void forcePatchMethod(HttpURLConnection conn) {
+        try {
+            java.lang.reflect.Field methodField;
+            try {
+                methodField = HttpURLConnection.class.getDeclaredField("method");
+            } catch (NoSuchFieldException e) {
+                methodField = conn.getClass().getSuperclass().getDeclaredField("method");
+            }
+            methodField.setAccessible(true);
+            methodField.set(conn, "PATCH");
+        } catch (Exception e) {
+            throw new RuntimeException("No se pudo forzar PATCH via reflexión: " + e.getMessage(), e);
+        }
     }
 }
