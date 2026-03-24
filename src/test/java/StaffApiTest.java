@@ -103,10 +103,9 @@ public class StaffApiTest {
      * PATCH /api/v1/staff/{id}/admin
      * Verifica que la actualización parcial de campos de un empleado funciona correctamente.
      *
-     * Nota técnica: Java 17 (JPMS) bloquea el método PATCH tanto en HttpClient como vía
-     * reflexión en java.base/java.net. Solución: invocar curl via ProcessBuilder, patrón
-     * estándar en tests de integración de sistema que evita las restricciones de la JVM
-     * sin modificar pom.xml ni agregar dependencias externas.
+     * Nota técnica: Java 17 JPMS bloquea PATCH en sus APIs HTTP. Se usa curl vía ProcessBuilder.
+     * El payload se escribe en un archivo temporal para evitar problemas de escape de comillas
+     * en Windows al pasar JSON inline con el flag -d.
      */
     @Test
     @Order(3)
@@ -114,14 +113,17 @@ public class StaffApiTest {
         String jsonPayload = "{\"phone_number\": \"99999999\", \"status\": \"Active\", \"role_level\": \"Senior\"}";
         String patchUrl = BASE_URL + "/" + KNOWN_STAFF_ID + "/admin";
 
-        // Lanzar curl para enviar PATCH (evita la restricción de métodos HTTP en la JVM de Java 17)
+        // Escribir el JSON en un archivo temporal para evitar problemas de escape en Windows
+        java.io.File tempFile = java.io.File.createTempFile("patch_payload", ".json");
+        tempFile.deleteOnExit();
+        java.nio.file.Files.writeString(tempFile.toPath(), jsonPayload);
+
         ProcessBuilder pb = new ProcessBuilder(
             "curl", "-s",
-            "-o", "/dev/null",
-            "-w", "%{http_code}",
+            "-w", "\n%{http_code}",
             "-X", "PATCH",
             "-H", "Content-Type: application/json",
-            "-d", jsonPayload,
+            "-d", "@" + tempFile.getAbsolutePath(),
             patchUrl
         );
         pb.redirectErrorStream(true);
@@ -129,10 +131,12 @@ public class StaffApiTest {
         String output = new String(process.getInputStream().readAllBytes()).trim();
         process.waitFor();
 
-        // output contiene el HTTP status code devuelto por curl (-w "%{http_code}")
-        int code = Integer.parseInt(output.replaceAll("[^0-9]", "").substring(0, 3));
+        // La última línea del output de curl es el HTTP status code
+        String[] lines = output.split("\\n");
+        int code = Integer.parseInt(lines[lines.length - 1].trim());
 
         assertTrue(code == 200,
-            "PATCH sobre un staff existente debería devolver 200, pero devolvió: " + code);
+            "PATCH sobre un staff existente debería devolver 200, pero devolvió: " + code
+            + "\nResponse body: " + String.join("\n", java.util.Arrays.copyOf(lines, lines.length - 1)));
     }
 }
